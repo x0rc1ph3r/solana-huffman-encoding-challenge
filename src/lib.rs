@@ -4,31 +4,46 @@
 #[cfg(not(feature = "no-entrypoint"))]
 pinocchio_pubkey::declare_id!("ADUtWaDe3cn7V3oskWD7UWkdq9zxc6DcZKHoUH8vWBcD");
 
-use pinocchio::{
-    ProgramResult, entrypoint::InstructionContext, lazy_program_entrypoint, no_allocator,
-    nostd_panic_handler,
-};
+use pinocchio::{no_allocator, nostd_panic_handler};
 
-lazy_program_entrypoint!(process_instruction);
+// lazy_program_entrypoint!(process_instruction);
 no_allocator!();
 nostd_panic_handler!();
 
-#[inline(always)]
-fn process_instruction(context: InstructionContext) -> ProgramResult {
-    let instruction_data = unsafe { context.instruction_data_unchecked() };
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u8 {
+    let instruction_length = unsafe { *input.add(8) };
+    let instruction_data_start = unsafe { input.add(16) };
 
-    let (_decoded_len, _decoded_bytes) = huffman_decode_url(instruction_data);
+    
+
+    // Create slice from the pointer and length
+    let instruction_data =
+        unsafe { core::slice::from_raw_parts(instruction_data_start, instruction_length as usize) };
+    let (_decoded_len, _decoded_bytes) = unsafe { huffman_decode_url(instruction_data) };
     // let res_str = unsafe {
     //     core::str::from_utf8_unchecked(_decoded_bytes.get_unchecked(.._decoded_len))
     // };
-    // sol_log(&res_str);
-
-    Ok(())
+    // sol_log(res_str);
+    0
 }
+
+// #[inline(always)]
+// fn process_instruction(context: InstructionContext) -> ProgramResult {
+//     let instruction_data = unsafe { context.instruction_data_unchecked() };
+
+//     let (_decoded_len, _decoded_bytes) = unsafe { huffman_decode_url(instruction_data) };
+//     // let res_str = unsafe {
+//     //     core::str::from_utf8_unchecked(_decoded_bytes.get_unchecked(.._decoded_len))
+//     // };
+//     // sol_log(&res_str);
+
+//     Ok(())
+// }
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-struct Node {
+pub struct Node {
     value: u8,
     left: u8,
     right: u8,
@@ -58,7 +73,7 @@ impl Node {
 }
 
 #[inline(always)]
-fn huffman_decode_url(instruction_data: &[u8]) -> (usize, [u8; 256]) {
+pub unsafe fn huffman_decode_url(instruction_data: &[u8]) -> (usize, [u8; 256]) {
     let mut result = [0u8; 256];
 
     let original_len = unsafe { *instruction_data.get_unchecked(0) } as usize;
@@ -78,11 +93,13 @@ fn huffman_decode_url(instruction_data: &[u8]) -> (usize, [u8; 256]) {
     // Build tree iteratively
     let mut nodes: [Node; 128] = [Node::new_leaf(0); 128];
     let mut node_count = 0u8;
-    let root_idx = build_tree_iterative(
-        unsafe { encoded_data.get_unchecked(2..2 + tree_size) },
-        &mut nodes,
-        &mut node_count,
-    );
+    let root_idx = unsafe {
+        build_tree_iterative(
+            encoded_data.get_unchecked(2..2 + tree_size),
+            &mut nodes,
+            &mut node_count,
+        )
+    };
 
     // Decode bits with target length constraint
     let mut result_len = 0;
@@ -132,7 +149,11 @@ fn huffman_decode_url(instruction_data: &[u8]) -> (usize, [u8; 256]) {
 }
 
 #[inline(always)]
-fn build_tree_iterative(tree_data: &[u8], nodes: &mut [Node; 128], node_count: &mut u8) -> u8 {
+pub unsafe fn build_tree_iterative(
+    tree_data: &[u8],
+    nodes: &mut [Node; 128],
+    node_count: &mut u8,
+) -> u8 {
     let mut pos = 0;
     let mut stack: [u8; 16] = [0; 16];
     let mut _stack_top = 0;
